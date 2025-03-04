@@ -17,7 +17,7 @@ Reference: [GPTs](https://openai.com/blog/introducing-gpts), launched by OpenAI.
 ```commandline
 pip install -r requirements.txt
 ```
-### 2. Set up api keys in .streamlit/secrets
+### 2. In the main directory, create and set up api keys in .streamlit/secrets
 ```commandline
 [nyt]
 api_key=xxx
