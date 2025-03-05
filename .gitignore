@@ -1,0 +1,57 @@
+# env variables
+.env
+
+# llama index
+.llama_index
+
+# llama index cache
+.llama_index_cache
+
+# llama index cache
+.llama_index_cache
+
+# vscode checkouts
+.vscode
+
+# streamlit cache
+.streamlit/secrets.toml
+
+# Ignore virtual environment
+venv/
+rec/
+
+
+
+# Ignore compiled Python files
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Ignore logs and debug files
+logs/
+*.log
+
+# Ignore Streamlit cache
+.streamlit/
+
+# Ignore environment config
+.env
+config/settings.yaml
+
+# Ignore dataset and temp files
+
+*.csv
+*.json
+*.db
+*.sqlite
+*.pkl
+
+# Ignore Jupyter Notebook checkpoints
+.ipynb_checkpoints/
+
+# Ignore macOS system files
+.DS_Store
+
+# Ignore VS Code settings (optional)
+.vscode/
