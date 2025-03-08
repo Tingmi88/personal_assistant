@@ -16,13 +16,44 @@ The Book Recommendation Assistant is a RAG (Retrieval-Augmented Generation) base
 - Powered by LlamaIndex and Hugging Face embedding technology
 - Conversational chat interface for interactive recommendations
 
-## How to Use
+## Technical Architecture
 
-1. Enter a book genre, author, or topic in the chat input
-2. Ask about current bestsellers or popular books
-3. Get information about new releases
-4. Ask general questions when you need quick information
-5. Follow up on recommendations for more details
+### Models and Embeddings
+- **Embedding Model**: BAAI/bge-small-en-v1.5 (Hugging Face)
+- **LLM**: OpenAI GPT-3.5-Turbo for query routing and response generation
+- **Vector Store**: LlamaIndex's built-in vector store for document retrieval
+
+### Data Processing
+- **Data Source**: Goodreads book dataset (CSV format)
+- **Text Representation**: Prioritizes book descriptions in the embedding to improve semantic matching
+- **Metadata Extraction**: Extracts book titles, authors, genres, ratings, and URLs for filtering and display
+
+### Query Pipeline
+1. **Query Classification**: Determines if the query is about:
+   - Book recommendations (uses local vector database)
+   - Current book trends (uses web search)
+   - General knowledge (uses web search)
+   
+2. **Router Query Engine**: Directs queries to the appropriate tool based on classification:
+   - Book database tool for recommendations
+   - Web search tool for current trends
+   - Web search tool for general knowledge
+
+3. **Response Generation**: Formats responses with:
+   - Book title and author
+   - Brief description
+   - Relevance explanation
+   - Rating information
+   - Purchase links
+
+### Web Search Integration
+- **Search Provider**: Google Custom Search API
+- **Implementation**: Uses LlamaIndex's GoogleSearchToolSpec
+- **Use Cases**: Current bestsellers, new releases, and general knowledge questions
+
+### Conversation Management
+- **History Tracking**: Maintains conversation context for follow-up questions
+- **Context Window**: Uses the most recent 10 messages to keep context relevant
 
 ## Installation Steps
 
@@ -56,9 +87,3 @@ The Book Recommendation Assistant is a RAG (Retrieval-Augmented Generation) base
 
 Start the Streamlit application:
 ```
-streamlit run streamlit_app.py
-```
-
-## Dependencies
-
-The application depends on the following packages:
