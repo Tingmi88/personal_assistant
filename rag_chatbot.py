@@ -162,6 +162,7 @@ What kind of books would you like me to recommend today?"""
         - Brief description
         - Why you're recommending it (based on their query)
         - Rating information if relevant
+        - Purchase link (use the URL from the metadata)
         
         Conversation history:
         {conversation_history}
@@ -173,6 +174,7 @@ What kind of books would you like me to recommend today?"""
         by asking about their reading interests.
         
         Provide thoughtful, personalized recommendations that explain why each book matches what the user is looking for.
+        Always include the purchase link for each book if available in the metadata.
         """
     else:
         prompt = f"""
@@ -190,12 +192,14 @@ What kind of books would you like me to recommend today?"""
         - Brief description
         - Why you're recommending it (based on their query)
         - Rating information if relevant
+        - Purchase link (use the URL from the metadata)
         
         If the user's query isn't directly related to book recommendations (like general conversation, 
         compliments, or small talk), acknowledge it briefly and then guide them back to book recommendations 
         by asking about their reading interests.
         
         Provide thoughtful, personalized recommendations that explain why each book matches what the user is looking for.
+        Always include the purchase link for each book if available in the metadata.
         """
     
     # Generate a recommendation based on the user input
