@@ -91,9 +91,12 @@ def get_diverse_recommendations(query, top_k=10):
 
 def generate_book_recommendation(user_input, conversation_history=None):
     """Generate book recommendations based on user input and conversation history."""
+    # Normalize input for pattern matching
+    normalized_input = user_input.lower().strip()
+    
     # Check if the input is a simple greeting
     greeting_phrases = ["hi", "hello", "hey", "greetings", "howdy", "hi there", "hello there"]
-    if user_input.lower().strip() in greeting_phrases or user_input.lower().strip().startswith(tuple(greeting_phrases)):
+    if normalized_input in greeting_phrases or normalized_input.startswith(tuple(greeting_phrases)):
         return """Hello! I'm your book recommendation assistant. I can help you find books based on:
         
 - Genres you enjoy
@@ -103,7 +106,33 @@ def generate_book_recommendation(user_input, conversation_history=None):
 
 What kind of books are you interested in today?"""
     
-    # Create a query engine with more specific parameters
+    # Handle compliments and positive feedback
+    compliment_phrases = ["you are good", "you're good", "that's great", "that was helpful", 
+                         "thank you", "thanks", "good job", "well done", "awesome", "excellent"]
+    if any(phrase in normalized_input for phrase in compliment_phrases):
+        return """Thank you for the kind words! I'm glad I could help.
+
+Is there a specific type of book you're looking for today? Or would you like more recommendations similar to ones we've discussed?"""
+    
+    # Handle goodbyes
+    goodbye_phrases = ["bye", "goodbye", "see you", "farewell", "that's all", "exit", "quit"]
+    if any(phrase in normalized_input for phrase in goodbye_phrases):
+        return """It was a pleasure helping you find books today! Feel free to come back anytime you need new reading recommendations. Happy reading!"""
+    
+    # Handle general questions about the assistant
+    about_assistant_phrases = ["who are you", "what can you do", "how do you work", "what are you"]
+    if any(phrase in normalized_input for phrase in about_assistant_phrases):
+        return """I'm a book recommendation assistant designed to help you discover books you might enjoy. 
+        
+I can suggest books based on:
+- Authors you like
+- Genres you enjoy
+- Themes or topics you're interested in
+- Your reading preferences and past favorites
+
+What kind of books would you like me to recommend today?"""
+    
+    # For actual book recommendation requests, use the query engine
     query_engine = index.as_query_engine(
         similarity_top_k=8,  # Retrieve more documents for diversity
         response_mode="compact"
@@ -132,6 +161,10 @@ What kind of books are you interested in today?"""
         
         Current query: {user_input}
         
+        If the user's query isn't directly related to book recommendations (like general conversation, 
+        compliments, or small talk), acknowledge it briefly and then guide them back to book recommendations 
+        by asking about their reading interests.
+        
         Provide thoughtful, personalized recommendations that explain why each book matches what the user is looking for.
         """
     else:
@@ -150,6 +183,10 @@ What kind of books are you interested in today?"""
         - Brief description
         - Why you're recommending it (based on their query)
         - Rating information if relevant
+        
+        If the user's query isn't directly related to book recommendations (like general conversation, 
+        compliments, or small talk), acknowledge it briefly and then guide them back to book recommendations 
+        by asking about their reading interests.
         
         Provide thoughtful, personalized recommendations that explain why each book matches what the user is looking for.
         """
