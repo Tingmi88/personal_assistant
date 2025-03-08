@@ -115,8 +115,35 @@ def create_router_query_engine():
         # If search tool isn't available, just return the book query engine
         return book_query_engine
     
-    # Create a query engine from the search tool
-    search_query_engine = search_tool.as_query_engine()
+    # Create a wrapper function to adapt the search tool to a query engine interface
+    def search_query_wrapper(query_str):
+        from llama_index.core.response_synthesizers import get_response_synthesizer
+        from llama_index.core.schema import Response
+        
+        try:
+            # Use the call method of the search tool
+            search_result = search_tool.call(query_str)
+            
+            # If the result is a list of documents, extract text from them
+            if isinstance(search_result, list) and len(search_result) > 0:
+                # Extract text from all documents
+                texts = [doc.get_text() for doc in search_result]
+                combined_text = "\n\n".join(texts)
+                return Response(response=combined_text)
+            else:
+                # Return the result as is
+                return Response(response=str(search_result))
+        except Exception as e:
+            print(f"Error in search query: {e}")
+            return Response(response=f"Error performing search: {str(e)}")
+    
+    # Create a simple wrapper class that mimics a query engine
+    class SearchToolQueryEngine:
+        def query(self, query_str):
+            return search_query_wrapper(query_str)
+    
+    # Create the search query engine
+    search_query_engine = SearchToolQueryEngine()
     
     # Create tool for the book index
     book_tool = QueryEngineTool(
