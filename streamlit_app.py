@@ -2,16 +2,16 @@ import streamlit as st
 from rag_chatbot import generate_book_recommendation
 
 # Set page title and configuration
-st.set_page_config(page_title="Book Recommendation Agent", layout="wide")
-st.title("📚 Book Recommendation Agent")
+st.set_page_config(page_title="Book Recommendation & Information Assistant", layout="wide")
+st.title("📚 Book Recommendation Assistant")
 
 # Add description
 st.markdown("""
-This intelligent agent recommends books based on your interests. You can:
-- Ask for books by a specific author
-- Request books similar to a title you enjoyed
-- Describe themes or content you're interested in
-- Ask for popular books in a genre
+This intelligent assistant helps with:
+- Book recommendations based on your interests
+- Information about current bestsellers and popular books
+- General questions about books and authors
+- Basic information and facts when you need them
 """)
 
 # Initialize session state for chat history if it doesn't exist
@@ -28,10 +28,11 @@ with st.sidebar:
     st.markdown("---")
     st.markdown("### How to use")
     st.markdown("""
-    - Be specific about what you like
-    - Mention authors, genres, or themes
-    - Tell the agent if you want highly-rated books
-    - Ask follow-up questions about recommendations
+    - Ask for book recommendations by genre, author, or theme
+    - Ask about current bestsellers or popular books
+    - Get information about new releases
+    - Ask general questions when you need quick information
+    - Follow up on recommendations for more details
     """)
 
 # Display chat history
@@ -40,7 +41,7 @@ for message in st.session_state.messages:
         st.markdown(message["content"])
 
 # User input
-user_input = st.chat_input("Ask about book recommendations...")
+user_input = st.chat_input("Ask about books or anything else...")
 
 # Process user input
 if user_input:
@@ -53,19 +54,19 @@ if user_input:
     
     # Generate response
     with st.chat_message("assistant"):
-        with st.spinner("Finding great books for you..."):
+        with st.spinner("Thinking..."):
             # Get only the recent conversation to keep context relevant
             recent_conversation = st.session_state.messages[-10:] if len(st.session_state.messages) > 10 else st.session_state.messages
             conversation_history = "\n".join([f"{m['role']}: {m['content']}" for m in recent_conversation])
             
             # Generate recommendation with context
-            recommendation = generate_book_recommendation(
+            response = generate_book_recommendation(
                 user_input, 
                 conversation_history=conversation_history
             )
             
             # Display the response
-            st.markdown(recommendation)
+            st.markdown(response)
     
     # Add assistant response to chat history
-    st.session_state.messages.append({"role": "assistant", "content": recommendation})
+    st.session_state.messages.append({"role": "assistant", "content": response})

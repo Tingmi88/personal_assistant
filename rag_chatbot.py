@@ -8,6 +8,10 @@ from llama_index.core.schema import TextNode
 from llama_index.core import StorageContext, load_index_from_storage
 from dotenv import load_dotenv
 import shutil
+from search_tools import get_search_tool, get_current_date, is_general_knowledge_query, is_current_book_trend_query
+from llama_index.core.query_engine import RouterQueryEngine
+from llama_index.core.selectors import LLMSingleSelector
+from llama_index.core.tools import QueryEngineTool, ToolMetadata
 
 # Load environment variables
 load_dotenv()
@@ -96,6 +100,62 @@ def get_diverse_recommendations(query, top_k=10):
     
     return diverse_nodes
 
+def create_router_query_engine():
+    """Create a router query engine that can choose between local index and web search."""
+    # Get the base query engine from our book index
+    book_query_engine = index.as_query_engine(
+        similarity_top_k=8,
+        response_mode="compact"
+    )
+    
+    # Get the search tool
+    search_tool = get_search_tool()
+    
+    if not search_tool:
+        # If search tool isn't available, just return the book query engine
+        return book_query_engine
+    
+    # Create a query engine from the search tool
+    search_query_engine = search_tool.as_query_engine()
+    
+    # Create tool for the book index
+    book_tool = QueryEngineTool(
+        query_engine=book_query_engine,
+        metadata=ToolMetadata(
+            name="book_database",
+            description="Useful for answering questions about books in the local database. Use this for general book recommendations based on genres, authors, or themes."
+        )
+    )
+    
+    # Create tool for the search engine for book trends
+    book_trends_tool = QueryEngineTool(
+        query_engine=search_query_engine,
+        metadata=ToolMetadata(
+            name="book_trends_search",
+            description="Useful for answering questions about current book trends, bestsellers, new releases, or popular books that might not be in the local database. Use this when the user asks about what's popular or trending now."
+        )
+    )
+    
+    # Create tool for general knowledge questions
+    general_knowledge_tool = QueryEngineTool(
+        query_engine=search_query_engine,
+        metadata=ToolMetadata(
+            name="general_knowledge",
+            description="Useful for answering general knowledge questions not related to books, such as current date, news, facts, or other information. Use this when the user asks questions that aren't about book recommendations."
+        )
+    )
+    
+    # Create the LLM for selection
+    llm = OpenAI(model="gpt-3.5-turbo")
+    
+    # Create the router query engine with all three tools
+    router_query_engine = RouterQueryEngine(
+        selector=LLMSingleSelector.from_defaults(llm=llm),
+        query_engine_tools=[book_tool, book_trends_tool, general_knowledge_tool],
+    )
+    
+    return router_query_engine
+
 def generate_book_recommendation(user_input, conversation_history=None):
     """Generate book recommendations based on user input and conversation history."""
     # Normalize input for pattern matching
@@ -110,6 +170,7 @@ def generate_book_recommendation(user_input, conversation_history=None):
 - Authors similar to ones you like
 - Specific themes or topics
 - Your reading preferences
+- Current bestsellers and popular books
 
 What kind of books are you interested in today?"""
     
@@ -136,17 +197,79 @@ I can suggest books based on:
 - Genres you enjoy
 - Themes or topics you're interested in
 - Your reading preferences and past favorites
+- Current bestsellers and popular books (I can search the web for this!)
+
+I can also answer general questions about dates, news, and other information.
 
 What kind of books would you like me to recommend today?"""
     
-    # For actual book recommendation requests, use the query engine
-    query_engine = index.as_query_engine(
-        similarity_top_k=8,  # Retrieve more documents for diversity
-        response_mode="compact"
-    )
+    # Handle date/time questions directly
+    if "what day is today" in normalized_input or "what is today" in normalized_input or "current date" in normalized_input:
+        current_date = get_current_date()
+        return f"Today is {current_date}. How can I help you with book recommendations today?"
     
-    # Prepare the prompt based on conversation history
-    if conversation_history and len(conversation_history) > 0:
+    # Handle specific bestseller list requests directly
+    nyt_patterns = ["new york times bestseller", "nyt bestseller", "ny times bestseller"]
+    amazon_patterns = ["amazon bestseller", "amazon best seller", "amazon top books"]
+    bn_patterns = ["barnes", "noble", "b&n", "barnes & noble"]
+    
+    if any(pattern in normalized_input for pattern in nyt_patterns):
+        from search_tools import get_bestseller_list
+        return get_bestseller_list("nyt")
+    elif any(pattern in normalized_input for pattern in amazon_patterns):
+        from search_tools import get_bestseller_list
+        return get_bestseller_list("amazon")
+    elif any(pattern in normalized_input for pattern in bn_patterns) and ("bestseller" in normalized_input or "best seller" in normalized_input):
+        from search_tools import get_bestseller_list
+        return get_bestseller_list("barnes_noble")
+    
+    # Get the router query engine that can choose between local data and web search
+    query_engine = create_router_query_engine()
+    
+    # Determine the type of query
+    is_general = is_general_knowledge_query(user_input)
+    is_trend = is_current_book_trend_query(user_input)
+    
+    # Prepare the prompt based on conversation history and query type
+    if is_general:
+        # For general knowledge questions
+        prompt = f"""
+        You are an intelligent assistant. The user has asked: "{user_input}"
+        
+        This appears to be a general knowledge question not directly related to book recommendations.
+        Please answer this question accurately and concisely using the search tool.
+        
+        After answering their question, you can gently remind them that you're primarily a book recommendation
+        assistant and ask if they'd like book recommendations.
+        """
+    elif is_trend:
+        # For current book trends
+        prompt = f"""
+        You are an intelligent book recommendation assistant. The user has asked about current book trends: "{user_input}"
+        
+        This is a request for CURRENT bestsellers or popular books. You MUST use the book_trends_search tool to search 
+        the web for up-to-date information about current bestsellers, popular books, or recent releases.
+        
+        DO NOT rely on your internal knowledge or the book database for this query, as that information may be outdated.
+        
+        When searching, use specific search terms like "current New York Times bestseller list" or "Amazon top books this week"
+        to get the most recent information.
+        
+        For each book you recommend, include:
+        - Title and author
+        - Brief description
+        - Why it's currently popular or trending
+        - Rating information if available
+        - Purchase link if available
+        
+        Present the information in a clear, organized format with 3-5 relevant recommendations.
+        
+        If you're unable to find current bestseller information, clearly state that you couldn't retrieve 
+        the latest bestseller data and suggest the user check official sources like the New York Times 
+        bestseller list website or Amazon's bestseller page.
+        """
+    elif conversation_history and len(conversation_history) > 0:
+        # For regular book recommendations with conversation history
         prompt = f"""
         You are an intelligent book recommendation agent. Based on the following conversation history and the current query, 
         recommend 3-5 diverse and relevant books that match the user's interests.
@@ -162,21 +285,18 @@ What kind of books would you like me to recommend today?"""
         - Brief description
         - Why you're recommending it (based on their query)
         - Rating information if relevant
-        - Purchase link (use the URL from the metadata)
+        - Purchase link (use the URL from the metadata or search results)
         
         Conversation history:
         {conversation_history}
         
         Current query: {user_input}
         
-        If the user's query isn't directly related to book recommendations (like general conversation, 
-        compliments, or small talk), acknowledge it briefly and then guide them back to book recommendations 
-        by asking about their reading interests.
-        
         Provide thoughtful, personalized recommendations that explain why each book matches what the user is looking for.
-        Always include the purchase link for each book if available in the metadata.
+        Always include the purchase link for each book if available.
         """
     else:
+        # For regular book recommendations without conversation history
         prompt = f"""
         You are an intelligent book recommendation agent. Based on the query: "{user_input}", 
         recommend 3-5 diverse and relevant books.
@@ -192,17 +312,13 @@ What kind of books would you like me to recommend today?"""
         - Brief description
         - Why you're recommending it (based on their query)
         - Rating information if relevant
-        - Purchase link (use the URL from the metadata)
-        
-        If the user's query isn't directly related to book recommendations (like general conversation, 
-        compliments, or small talk), acknowledge it briefly and then guide them back to book recommendations 
-        by asking about their reading interests.
+        - Purchase link (use the URL from the metadata or search results)
         
         Provide thoughtful, personalized recommendations that explain why each book matches what the user is looking for.
-        Always include the purchase link for each book if available in the metadata.
+        Always include the purchase link for each book if available.
         """
     
-    # Generate a recommendation based on the user input
+    # Generate a response based on the user input
     response = query_engine.query(prompt)
     
     return response.response
