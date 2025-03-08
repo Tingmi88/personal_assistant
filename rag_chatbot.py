@@ -17,7 +17,7 @@ Settings.embed_model = OpenAIEmbedding(api_key=openai_api_key)
 # Load the CSV file into a DataFrame with explicit encoding
 try:
     # Try UTF-8 encoding first
-    csv_file_path = "data/goodreads_data.csv"
+    csv_file_path = "data/goodreads_sample_100.csv"  # Use the smaller dataset
     df = pd.read_csv(csv_file_path, encoding='utf-8')
 except UnicodeDecodeError:
     # If UTF-8 fails, try with a different encoding
