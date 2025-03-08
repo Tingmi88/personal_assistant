@@ -1,103 +1,74 @@
-import pandas as pd
-from llama_index.core import VectorStoreIndex, Document, Settings
-import streamlit as st
-from dotenv import load_dotenv
 import os
-from llama_index.embeddings.openai import OpenAIEmbedding
+from llama_index.core import VectorStoreIndex, SimpleDirectoryReader
+from llama_index.core import Settings
+from llama_index.llms.openai import OpenAI
+import pandas as pd
+from llama_index.embeddings.huggingface import HuggingFaceEmbedding
+from llama_index.core.schema import TextNode
+from llama_index.core import StorageContext, load_index_from_storage
+from dotenv import load_dotenv
+import shutil
 
 # Load environment variables
 load_dotenv()
 
-# Now you can access the API key
-openai_api_key = os.getenv("OPENAI_API_KEY")
+# Define embedding model - use the same model consistently
+embed_model = HuggingFaceEmbedding(model_name="BAAI/bge-small-en-v1.5")
 
-# Set up the embedding model
-Settings.embed_model = OpenAIEmbedding(api_key=openai_api_key)
+# Configure global settings
+Settings.embed_model = embed_model
 
-# Load the CSV file into a DataFrame with explicit encoding
+# Force recreate the index to ensure consistent embeddings
+PERSIST_DIR = "./storage"
+if os.path.exists(PERSIST_DIR):
+    # Remove the existing index to recreate it with the correct embeddings
+    shutil.rmtree(PERSIST_DIR)
+
+# Create a new index from the CSV data
 try:
-    # Try UTF-8 encoding first
-    csv_file_path = "data/goodreads_sample_100.csv"  # Use the smaller dataset
-    df = pd.read_csv(csv_file_path, encoding='utf-8')
-except UnicodeDecodeError:
-    # If UTF-8 fails, try with a different encoding
-    df = pd.read_csv(csv_file_path, encoding='latin1')
-
-# Clean the data to handle potential Unicode issues
-def clean_text(text):
-    if isinstance(text, str):
-        # Replace problematic characters or normalize Unicode
-        return text.encode('ascii', 'ignore').decode('ascii')
-    return str(text)
-
-# Helper function to safely convert string numbers with commas to integers
-def safe_int_convert(value):
-    if pd.isna(value):
-        return 1  # Default to 1 rating if missing
-    try:
-        # Remove commas and convert to int
-        result = int(str(value).replace(',', ''))
-        return max(1, result)  # Ensure at least 1 rating
-    except (ValueError, TypeError):
-        return 1
-
-# Helper function to safely convert to float within rating range
-def safe_rating_convert(value):
-    if pd.isna(value):
-        return 3.0  # Default to neutral rating if missing
-    try:
-        result = float(value)
-        return max(0, min(5, result))  # Clamp between 0 and 5
-    except (ValueError, TypeError):
-        return 3.0
-
-# Convert the DataFrame into a list of LlamaIndex Document objects
-documents = []
-for index, row in df.iterrows():
-    # Clean the text data for all relevant fields
-    book = clean_text(row['Book'])
-    author = clean_text(row['Author'])
-    description = clean_text(row['Description'])
-    genres = clean_text(row['Genres'])
+    # Load the CSV file
+    df = pd.read_csv('data/goodreads_sample_100.csv')
     
-    # Convert numerical ratings with appropriate constraints
-    avg_rating = safe_rating_convert(row['Avg_Rating'])
-    num_ratings = safe_int_convert(row['Num_Ratings'])
+    # Create nodes from the dataframe
+    nodes = []
+    for _, row in df.iterrows():
+        # Create a rich text representation of each book
+        text = f"Title: {row['Book']}\nAuthor: {row['Author']}\nDescription: {row['Description']}\n"
+        text += f"Genres: {row['Genres']}\n"
+        text += f"Average Rating: {row['Avg_Rating']}\nNumber of Ratings: {row['Num_Ratings']}\n"
+        text += f"URL: {row['URL']}"
+        
+        # Create metadata for better retrieval
+        metadata = {
+            "title": row['Book'],
+            "author": row['Author'],
+            "genres": row['Genres'],
+            "avg_rating": row['Avg_Rating'],
+            "num_ratings": row['Num_Ratings'],
+            "url": row['URL']
+        }
+        
+        # Create a node with the text and metadata
+        node = TextNode(text=text, metadata=metadata)
+        nodes.append(node)
     
-    # Add rating information as contextual text
-    rating_tier = "highly rated" if avg_rating >= 4.5 else \
-                 "well rated" if avg_rating >= 4.0 else \
-                 "positively rated" if avg_rating >= 3.5 else \
-                 "moderately rated"
-                 
-    popularity = "extremely popular" if num_ratings > 1000000 else \
-                "very popular" if num_ratings > 100000 else \
-                "popular" if num_ratings > 10000 else \
-                "somewhat known" if num_ratings > 1000 else \
-                "niche"
-                
-    rating_context = f"This book is {rating_tier} with an average of {avg_rating:.1f}/5 from {num_ratings:,} readers, making it {popularity}."
+    # Create the index with the nodes using our consistent embedding model
+    index = VectorStoreIndex(nodes)
     
-    # Create rich content for embedding by combining multiple fields
-    content = f"Book: {book}\nAuthor: {author}\nDescription: {description}\nGenres: {genres}\n{rating_context}"
+    # Save the index
+    index.storage_context.persist(PERSIST_DIR)
     
-    # Store all relevant fields in metadata
-    metadata = {
-        "id": row['ID'],
-        "title": book,
-        "author": author,
-        "genres": genres,
-        "avg_rating": avg_rating,
-        "num_ratings": num_ratings
-    }
-    
-    doc = Document(text=content, metadata=metadata)
-    documents.append(doc)
+except FileNotFoundError:
+    print("CSV file not found. Please make sure the data file exists.")
+    # Create a simple index with dummy data so the app doesn't crash
+    dummy_nodes = [TextNode(text="Sample book data not found")]
+    index = VectorStoreIndex(dummy_nodes)
+    index.storage_context.persist(PERSIST_DIR)
 
-# Initialize LlamaIndex with documents
-index = VectorStoreIndex.from_documents(documents)
+# Now load the index with the same embedding model
+storage_context = StorageContext.from_defaults(persist_dir=PERSIST_DIR)
+index = load_index_from_storage(storage_context)
 
-# Add this function to rag_chatbot.py
 def get_diverse_recommendations(query, top_k=10):
     """Get diverse book recommendations by combining semantic search with filtering."""
     # Get the base retriever
@@ -118,34 +89,60 @@ def get_diverse_recommendations(query, top_k=10):
     
     return diverse_nodes
 
-# Then modify the generate_book_recommendation function to use this:
 def generate_book_recommendation(user_input, conversation_history=None):
-    # Get diverse documents
-    diverse_nodes = get_diverse_recommendations(user_input, top_k=10)
-    
-    # Create a query engine with the retrieved nodes
+    """Generate book recommendations based on user input and conversation history."""
+    # Create a query engine with more specific parameters
     query_engine = index.as_query_engine(
-        similarity_top_k=5,
+        similarity_top_k=8,  # Retrieve more documents for diversity
         response_mode="compact"
     )
     
-    # Prepare the prompt
+    # Prepare the prompt based on conversation history
     if conversation_history and len(conversation_history) > 0:
         prompt = f"""
-        Based on the following conversation history and the current query, recommend diverse and relevant books. 
-        Don't repeat the same recommendations if possible.
+        You are an intelligent book recommendation agent. Based on the following conversation history and the current query, 
+        recommend 3-5 diverse and relevant books that match the user's interests.
+        
+        Consider these factors in your recommendations:
+        1. Content similarity to what the user is looking for
+        2. Author style if the user mentions an author they like
+        3. Genre preferences expressed by the user
+        4. Book ratings and popularity when relevant
+        
+        For each recommendation, include:
+        - Title and author
+        - Brief description
+        - Why you're recommending it (based on their query)
+        - Rating information if relevant
         
         Conversation history:
         {conversation_history}
         
         Current query: {user_input}
         
-        Please provide 3-5 book recommendations that match the current query, including title, author, and a brief reason for recommendation.
+        Provide thoughtful, personalized recommendations that explain why each book matches what the user is looking for.
         """
     else:
-        prompt = f"Please recommend 3-5 books related to '{user_input}', including title, author, and a brief reason for recommendation."
+        prompt = f"""
+        You are an intelligent book recommendation agent. Based on the query: "{user_input}", 
+        recommend 3-5 diverse and relevant books.
+        
+        Consider these factors in your recommendations:
+        1. Content similarity to what the user is looking for
+        2. Author style if the user mentions an author they like
+        3. Genre preferences expressed by the user
+        4. Book ratings and popularity when relevant
+        
+        For each recommendation, include:
+        - Title and author
+        - Brief description
+        - Why you're recommending it (based on their query)
+        - Rating information if relevant
+        
+        Provide thoughtful, personalized recommendations that explain why each book matches what the user is looking for.
+        """
     
-    # Generate a recommendation
+    # Generate a recommendation based on the user input
     response = query_engine.query(prompt)
     
     return response.response
