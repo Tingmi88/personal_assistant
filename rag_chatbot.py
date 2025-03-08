@@ -32,20 +32,26 @@ try:
     # Create nodes from the dataframe
     nodes = []
     for _, row in df.iterrows():
-        # Create a rich text representation of each book
-        text = f"Title: {row['Book']}\nAuthor: {row['Author']}\nDescription: {row['Description']}\n"
-        text += f"Genres: {row['Genres']}\n"
-        text += f"Average Rating: {row['Avg_Rating']}\nNumber of Ratings: {row['Num_Ratings']}\n"
-        text += f"URL: {row['URL']}"
+        # Prioritize the description in the text representation
+        # Put description first to give it more weight in the embedding
+        text = f"Description: {str(row['Description']) if pd.notna(row['Description']) else 'No description available'}\n\n"
+        text += f"Title: {row['Book']}\nAuthor: {row['Author']}\n"
+        text += f"Genres: {row['Genres'] if pd.notna(row['Genres']) else 'Unknown'}\n"
+        text += f"Average Rating: {row['Avg_Rating'] if pd.notna(row['Avg_Rating']) else 'Not rated'}\n"
+        text += f"Number of Ratings: {row['Num_Ratings'] if pd.notna(row['Num_Ratings']) else '0'}\n"
+        text += f"URL: {row['URL'] if pd.notna(row['URL']) else 'No URL available'}"
         
         # Create metadata for better retrieval
         metadata = {
             "title": row['Book'],
             "author": row['Author'],
-            "genres": row['Genres'],
-            "avg_rating": row['Avg_Rating'],
-            "num_ratings": row['Num_Ratings'],
-            "url": row['URL']
+            "genres": row['Genres'] if pd.notna(row['Genres']) else "Unknown",
+            "avg_rating": row['Avg_Rating'] if pd.notna(row['Avg_Rating']) else "Not rated",
+            "num_ratings": row['Num_Ratings'] if pd.notna(row['Num_Ratings']) else 0,
+            "url": row['URL'] if pd.notna(row['URL']) else "No URL available",
+            # Add a snippet of the description to metadata for filtering
+            "description_snippet": (row['Description'][:100] + "..." if len(str(row['Description'])) > 100 else str(row['Description'])) 
+                                   if pd.notna(row['Description']) else "No description available"
         }
         
         # Create a node with the text and metadata
@@ -53,6 +59,7 @@ try:
         nodes.append(node)
     
     # Create the index with the nodes using our consistent embedding model
+    # Adjust chunk size to accommodate longer descriptions (default is often 1024)
     index = VectorStoreIndex(nodes)
     
     # Save the index
