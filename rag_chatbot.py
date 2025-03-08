@@ -97,12 +97,55 @@ for index, row in df.iterrows():
 # Initialize LlamaIndex with documents
 index = VectorStoreIndex.from_documents(documents)
 
-# Define a function to handle user input and generate book recommendations
-def generate_book_recommendation(user_input):
-    # Create a query engine
-    query_engine = index.as_query_engine()
+# Add this function to rag_chatbot.py
+def get_diverse_recommendations(query, top_k=10):
+    """Get diverse book recommendations by combining semantic search with filtering."""
+    # Get the base retriever
+    retriever = index.as_retriever(similarity_top_k=top_k)
     
-    # Generate a recommendation based on the user input
-    response = query_engine.query(user_input)
+    # Retrieve documents
+    nodes = retriever.retrieve(query)
+    
+    # Track seen books to avoid duplicates
+    seen_books = set()
+    diverse_nodes = []
+    
+    for node in nodes:
+        book_title = node.metadata.get("title", "")
+        if book_title and book_title not in seen_books:
+            seen_books.add(book_title)
+            diverse_nodes.append(node)
+    
+    return diverse_nodes
+
+# Then modify the generate_book_recommendation function to use this:
+def generate_book_recommendation(user_input, conversation_history=None):
+    # Get diverse documents
+    diverse_nodes = get_diverse_recommendations(user_input, top_k=10)
+    
+    # Create a query engine with the retrieved nodes
+    query_engine = index.as_query_engine(
+        similarity_top_k=5,
+        response_mode="compact"
+    )
+    
+    # Prepare the prompt
+    if conversation_history and len(conversation_history) > 0:
+        prompt = f"""
+        Based on the following conversation history and the current query, recommend diverse and relevant books. 
+        Don't repeat the same recommendations if possible.
+        
+        Conversation history:
+        {conversation_history}
+        
+        Current query: {user_input}
+        
+        Please provide 3-5 book recommendations that match the current query, including title, author, and a brief reason for recommendation.
+        """
+    else:
+        prompt = f"Please recommend 3-5 books related to '{user_input}', including title, author, and a brief reason for recommendation."
+    
+    # Generate a recommendation
+    response = query_engine.query(prompt)
     
     return response.response
