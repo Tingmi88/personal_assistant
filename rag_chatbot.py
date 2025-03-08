@@ -91,6 +91,18 @@ def get_diverse_recommendations(query, top_k=10):
 
 def generate_book_recommendation(user_input, conversation_history=None):
     """Generate book recommendations based on user input and conversation history."""
+    # Check if the input is a simple greeting
+    greeting_phrases = ["hi", "hello", "hey", "greetings", "howdy", "hi there", "hello there"]
+    if user_input.lower().strip() in greeting_phrases or user_input.lower().strip().startswith(tuple(greeting_phrases)):
+        return """Hello! I'm your book recommendation assistant. I can help you find books based on:
+        
+- Genres you enjoy
+- Authors similar to ones you like
+- Specific themes or topics
+- Your reading preferences
+
+What kind of books are you interested in today?"""
+    
     # Create a query engine with more specific parameters
     query_engine = index.as_query_engine(
         similarity_top_k=8,  # Retrieve more documents for diversity
