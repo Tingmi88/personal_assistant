@@ -1,4 +1,4 @@
-# NLP-GENAI-第六期-RAGs
+# NLP-GENAI-RAG
 
 This repo is a modified version of:
 
